@@ -3,8 +3,8 @@ package jenkinsexporter
 import "github.com/prometheus/client_golang/prometheus"
 
 const (
-	BuildStageMetricName  = "stage_duration_seconds"
-	JobDurationMetricName = "job_duration_seconds"
+	BuildStageMetricName  = "stage_duration_milliseconds"
+	JobDurationMetricName = "job_duration_milliseconds"
 )
 
 type Metrics struct {

@@ -33,18 +33,19 @@ type respRaw struct {
 }
 
 type Build struct {
-	JobName            string
-	MultiBranchJobName string
-	ID                 int64
-	BuildableTime      time.Duration
-	WaitingTime        time.Duration
-	BlockedTime        time.Duration
-	ExecutingTime      time.Duration
-	BuildingDuration   time.Duration
-	Result             string
+	FolderName       string
+	JobName          string
+	BranchName       string
+	ID               int64
+	BuildableTime    time.Duration
+	WaitingTime      time.Duration
+	BlockedTime      time.Duration
+	ExecutingTime    time.Duration
+	BuildingDuration time.Duration
+	Result           string
 }
 
-func (c *Client) buildRawToBuild(workflowJobName, multibranchJobName string, rawBuild *buildRawResp) (*Build, error) {
+func (c *Client) buildRawToBuild(folderName, jobName, branchName string, rawBuild *buildRawResp) (*Build, error) {
 	const metricClass = "jenkins.metrics.impl.TimeInQueueAction"
 
 	for _, a := range rawBuild.Actions {
@@ -57,15 +58,16 @@ func (c *Client) buildRawToBuild(workflowJobName, multibranchJobName string, raw
 			return nil, fmt.Errorf("could not convert id '%s' to int64", rawBuild.ID)
 		}
 		b := Build{
-			JobName:            workflowJobName,
-			MultiBranchJobName: multibranchJobName,
-			ID:                 int64(intID),
-			BuildableTime:      time.Duration(a.BuildableTimeMillis) * time.Millisecond,
-			WaitingTime:        time.Duration(a.WaitingTimeMillis) * time.Millisecond,
-			BlockedTime:        time.Duration(a.BlockedTimeMillis) * time.Millisecond,
-			ExecutingTime:      time.Duration(a.ExecutingTimeMillis) * time.Millisecond,
-			BuildingDuration:   time.Duration(a.BuildingDurationMillis) * time.Millisecond,
-			Result:             rawBuild.Result,
+			FolderName:       folderName,
+			JobName:          jobName,
+			BranchName:       branchName,
+			ID:               int64(intID),
+			BuildableTime:    time.Duration(a.BuildableTimeMillis) * time.Millisecond,
+			WaitingTime:      time.Duration(a.WaitingTimeMillis) * time.Millisecond,
+			BlockedTime:      time.Duration(a.BlockedTimeMillis) * time.Millisecond,
+			ExecutingTime:    time.Duration(a.ExecutingTimeMillis) * time.Millisecond,
+			BuildingDuration: time.Duration(a.BuildingDurationMillis) * time.Millisecond,
+			Result:           rawBuild.Result,
 		}
 
 		return &b, nil
@@ -82,12 +84,13 @@ func (c *Client) respRawToBuilds(raw *respRaw, removeInProgressBuilds bool) []*B
 	var res []*Build
 
 	for _, job := range raw.Jobs {
+
 		for _, rawBuild := range job.WorkflowJobBuilds {
 			if removeInProgressBuilds && buildIsInProgress(rawBuild) {
 				continue
 			}
 
-			b, err := c.buildRawToBuild(job.Name, "", rawBuild)
+			b, err := c.buildRawToBuild(job.Name, "", "", rawBuild)
 			if err != nil {
 				c.logger.Printf("skipping build %s/%s: %s", job.Name, rawBuild.ID, err)
 				continue
@@ -97,20 +100,39 @@ func (c *Client) respRawToBuilds(raw *respRaw, removeInProgressBuilds bool) []*B
 		}
 
 		for _, multibranchJob := range job.MultiBranchJobs {
+			//jobs
 			for _, rawBuild := range multibranchJob.WorkflowJobBuilds {
 				if removeInProgressBuilds && buildIsInProgress(rawBuild) {
 					continue
 				}
 
-				b, err := c.buildRawToBuild(multibranchJob.Name, job.Name, rawBuild)
+				b, err := c.buildRawToBuild(job.Name, multibranchJob.Name, "", rawBuild)
 				if err != nil {
-					c.logger.Printf("skipping build %s/%s/%s: %s", multibranchJob.Name, job.Name, rawBuild.ID, err)
+					c.logger.Printf("skipping build %s/%s/%s: %s", job.Name, multibranchJob.Name, rawBuild.ID, err)
 					continue
 				}
 
 				res = append(res, b)
 			}
+
+			//multibranches Level 3
+			for _, multibranchJobChild := range multibranchJob.MultiBranchJobs {
+				for _, rawBuild := range multibranchJobChild.WorkflowJobBuilds {
+					if removeInProgressBuilds && buildIsInProgress(rawBuild) {
+						continue
+					}
+
+					b, err := c.buildRawToBuild(job.Name, multibranchJob.Name, multibranchJobChild.Name, rawBuild)
+					if err != nil {
+						c.logger.Printf("skipping build %s/%s/%s/%s: %s", job.Name, multibranchJob.Name, multibranchJobChild.Name, rawBuild.ID, err)
+						continue
+					}
+
+					res = append(res, b)
+				}
+			}
 		}
+
 	}
 
 	return res
@@ -121,10 +143,13 @@ func (c *Client) Builds(inProgressBuilds bool) ([]*Build, error) {
 	// _class = "jenkins.metrics.impl.TimeInQueueAction" that contains the
 	// metrics?
 	const queryBuilds = "builds[id,result,actions[_class,buildableTimeMillis,waitingTimeMillis,blockedTimeMillis,executingTimeMillis,buildingDurationMillis]]"
-	const endpoint = "api/json" +
-		"?tree=jobs[name,jobs[name," + queryBuilds + "]," + // multibranch jobs contain a job array that contain the builds
-		queryBuilds + // workflow jobs contain the builds in the top-level job
-		"]"
+
+	//for debugging, works with all level
+	//const endpoint = "api/json?tree=jobs[name,builds[id,result],jobs[name,builds[id,result],jobs[name,builds[id,result]]]]"
+	//Manage up to 3 nested job tree e.g :
+	//https://jenkins.EXAMPLE.com/job/JOB_EXAMPLE/job/PROJECT_EXAMPLE/job/BRANCH_EXAMPLE/
+	const endpoint = "api/json?tree=jobs[name," + queryBuilds +
+		",jobs[name," + queryBuilds + ",jobs[name," + queryBuilds + "]]]"
 
 	var resp respRaw
 	err := c.do("GET", c.serverURL+endpoint, &resp)

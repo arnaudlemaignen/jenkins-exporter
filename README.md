@@ -3,8 +3,8 @@
 This is a fork from [Jenkins Exporter](https://github.com/simplesurance/jenkins-exporter)
 with additional features:
 - support tree job up to 3 level e.g. https://jenkins.EXAMPLE.com/job/JOB_EXAMPLE/job/PROJECT_EXAMPLE/job/BRANCH_EXAMPLE/
-- duration metrics in milliseconds
-- jenkins_job includes the folder/job/branch name as in the [Jenkins Prometheus plugin](https://plugins.jenkins.io/prometheus/)
+- duration metrics values in milliseconds
+- jenkins_job label includes the folder/job/branch name as in the [Jenkins Prometheus plugin](https://plugins.jenkins.io/prometheus/)
 - grafana dashboard
 - dockerfile
 

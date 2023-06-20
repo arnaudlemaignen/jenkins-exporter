@@ -1,5 +1,14 @@
 # Jenkins Exporter #
 
+This is a fork from [Jenkins Exporter](https://github.com/simplesurance/jenkins-exporter)
+with additional features:
+- support tree job up to 3 level e.g. https://jenkins.EXAMPLE.com/job/JOB_EXAMPLE/job/PROJECT_EXAMPLE/job/BRANCH_EXAMPLE/
+- duration metrics in milliseconds
+- jenkins_job includes the folder/job/branch name as in the [Jenkins Prometheus plugin](https://plugins.jenkins.io/prometheus/)
+- grafana dashboard
+- dockerfile
+
+
 An exporter for Jenkins Build metrics written in Golang.
 The program is intended to run as daemon.
 It fetches periodically metrics for Jenkins builds and Stages via the Jenkins

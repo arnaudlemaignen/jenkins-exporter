@@ -3,7 +3,8 @@ name: publish
 on: [push]
 
 jobs:
-  publish-resource-model-exporter-image:
+  publish-jenkins-exporter-image:
+    permissions: write-all
     runs-on: ubuntu-latest
 
     steps:

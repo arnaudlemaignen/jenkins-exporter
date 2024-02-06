@@ -112,7 +112,7 @@ func recordJobDurationMetric(m *jenkinsexporter.Metrics, jobName, multibranchJob
 	labels := map[string]string{
 		// The label "job" is already used by Prometheus and
 		// applied to all scrape targets.
-		"jenkins_job": filepath.Join(jobName, multibranchJobName),
+		"jenkins_job": filepath.Join(multibranchJobName, jobName),
 		"type":        metricType,
 		"result":      strings.ToLower(buildResult),
 		"branch":      branchLabel,
@@ -323,7 +323,7 @@ func recordStagesMetric(metrics *jenkinsexporter.Metrics, b *jenkins.Build, stag
 
 		labels := map[string]string{
 			"branch":      branchLabel,
-			"jenkins_job": filepath.Join(b.JobName, b.MultiBranchJobName),
+			"jenkins_job": filepath.Join(b.MultiBranchJobName, b.JobName),
 			"result":      strings.ToLower(stage.Status),
 			"stage":       stage.Name,
 			"type":        "duration",

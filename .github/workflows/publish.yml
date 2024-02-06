@@ -19,5 +19,5 @@ jobs:
 
     - name: Build the Docker image
       run: |
-        docker build . --tag ghcr.io/arnaudlemaignen/jenkins-exporter:latest
-        docker push ghcr.io/arnaudlemaignen/jenkins-exporter:latest
+        docker build . --tag ghcr.io/arnaudlemaignen/jenkins-exporter-level2:latest
+        docker push ghcr.io/arnaudlemaignen/jenkins-exporter-level2:latest

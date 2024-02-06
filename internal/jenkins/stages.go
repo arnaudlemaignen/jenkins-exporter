@@ -39,22 +39,18 @@ func respWFAPIRawToStages(resp *respWFAPIRaw) []*Stage {
 	return res
 }
 
-func (c *Client) wfapiJobBuildURL(folderName, jobName, branchName, buildID string) (string, error) {
-	if jobName == "" {
-		return url.JoinPath(c.serverURL, "job", folderName, buildID, "wfapi")
+func (c *Client) wfapiJobBuildURL(jobName, multibranchJobName, buildID string) (string, error) {
+	if multibranchJobName == "" {
+		return url.JoinPath(c.serverURL, "job", jobName, buildID, "wfapi")
 	}
 
-	if branchName == "" {
-		return url.JoinPath(c.serverURL, "job", folderName, "job", jobName, buildID, "wfapi")
-	}
-
-	return url.JoinPath(c.serverURL, "job", folderName, "job", jobName, "job", branchName, buildID, "wfapi")
+	return url.JoinPath(c.serverURL, "job", multibranchJobName, "job", jobName, buildID, "wfapi")
 }
 
-func (c *Client) Stages(folderName, jobName, branchName string, buildID int64) ([]*Stage, error) {
+func (c *Client) Stages(jobName, multibranchJobName string, buildID int64) ([]*Stage, error) {
 	var resp respWFAPIRaw
 
-	wfapiURL, err := c.wfapiJobBuildURL(folderName, jobName, branchName, fmt.Sprint(buildID))
+	wfapiURL, err := c.wfapiJobBuildURL(jobName, multibranchJobName, fmt.Sprint(buildID))
 	if err != nil {
 		return nil, err
 	}

@@ -98,11 +98,21 @@ func init() {
 			"Specifies multibranch job and branch names for which a branch label is recorded.")
 }
 
-func recordJobDurationMetric(m *jenkinsexporter.Metrics, folderName, jobName, branchName, branchLabel, metricType, buildResult string, duration time.Duration) {
+// metricJobName returns the value of the job label used in metrics.
+// If multibranchJobName is not empty, it is used as label value, otherwise
+// jobName.
+func metricJobName(b *jenkins.Build) string {
+	if b.MultiBranchJobName != "" {
+		return b.MultiBranchJobName
+	}
+	return b.JobName
+}
+
+func recordJobDurationMetric(m *jenkinsexporter.Metrics, jobName, multibranchJobName, branchLabel, metricType, buildResult string, duration time.Duration) {
 	labels := map[string]string{
 		// The label "job" is already used by Prometheus and
 		// applied to all scrape targets.
-		"jenkins_job": filepath.Join(folderName, jobName, branchName),
+		"jenkins_job": filepath.Join(jobName, multibranchJobName),
 		"type":        metricType,
 		"result":      strings.ToLower(buildResult),
 		"branch":      branchLabel,
@@ -115,27 +125,28 @@ func recordJobDurationMetric(m *jenkinsexporter.Metrics, folderName, jobName, br
 func recordBuildMetric(c *jenkinsexporter.Metrics, b *jenkins.Build) {
 	var branchLabel string
 
+	jobName := metricJobName(b)
 	if isRecordingBranchLabelEnabled(b) {
-		branchLabel = b.FolderName
+		branchLabel = b.JobName
 	}
 
 	// TODO: sanitize jobname?, sometimes contains %20 and other weird
 	// chars
 
 	if *recordBlockedTime {
-		recordJobDurationMetric(c, b.FolderName, b.JobName, b.BranchName, branchLabel, "blocked_time", b.Result, b.BlockedTime)
+		recordJobDurationMetric(c, jobName, b.MultiBranchJobName, branchLabel, "blocked_time", b.Result, b.BlockedTime)
 	}
 	if *recordBuildAbleTime {
-		recordJobDurationMetric(c, b.FolderName, b.JobName, b.BranchName, branchLabel, "buildable_time", b.Result, b.BuildableTime)
+		recordJobDurationMetric(c, jobName, b.MultiBranchJobName, branchLabel, "buildable_time", b.Result, b.BuildableTime)
 	}
 	if *recordBuildingDuration {
-		recordJobDurationMetric(c, b.FolderName, b.JobName, b.BranchName, branchLabel, "building_duration", b.Result, b.BuildingDuration)
+		recordJobDurationMetric(c, jobName, b.MultiBranchJobName, branchLabel, "building_duration", b.Result, b.BuildingDuration)
 	}
 	if *recordExecutionTime {
-		recordJobDurationMetric(c, b.FolderName, b.JobName, b.BranchName, branchLabel, "executing_time", b.Result, b.ExecutingTime)
+		recordJobDurationMetric(c, jobName, b.MultiBranchJobName, branchLabel, "executing_time", b.Result, b.ExecutingTime)
 	}
 	if *recordWaitingTime {
-		recordJobDurationMetric(c, b.FolderName, b.JobName, b.BranchName, branchLabel, "waiting_time", b.Result, b.WaitingTime)
+		recordJobDurationMetric(c, jobName, b.MultiBranchJobName, branchLabel, "waiting_time", b.Result, b.WaitingTime)
 	}
 }
 
@@ -145,10 +156,10 @@ func buildsByJob(builds []*jenkins.Build) map[string][]*jenkins.Build {
 	for _, b := range builds {
 		var jobName string
 
-		if b.JobName != "" {
-			jobName = b.JobName + "/"
+		if b.MultiBranchJobName != "" {
+			jobName = b.MultiBranchJobName + "/"
 		}
-		jobName += b.FolderName
+		jobName += b.JobName
 
 		jobBuilds := res[jobName]
 
@@ -171,9 +182,9 @@ func jobIsInAllowList(build *jenkins.Build) bool {
 		return true
 	}
 
-	jobName := build.FolderName
-	if build.JobName != "" {
-		jobName = build.JobName
+	jobName := build.JobName
+	if build.MultiBranchJobName != "" {
+		jobName = build.MultiBranchJobName
 	}
 
 	if _, exist := jenkinsJobWhitelist[jobName]; exist {
@@ -187,7 +198,7 @@ func recordBuildStageJobInAllowList(b *jenkins.Build) bool {
 	if len(recordBuildStageJobAllowList) == 0 {
 		return true
 	}
-	_, exists := recordBuildStageJobAllowList[b.JobName]
+	_, exists := recordBuildStageJobAllowList[metricJobName(b)]
 	return exists
 }
 
@@ -265,9 +276,9 @@ func fetchAndRecord(clt *jenkins.Client, store *store.Store, onlyRecordNewbuilds
 }
 
 func fetchAndRecordStageMetric(clt *jenkins.Client, metrics *jenkinsexporter.Metrics, b *jenkins.Build) {
-	stages, err := clt.Stages(b.FolderName, b.JobName, b.BranchName, b.ID)
+	stages, err := clt.Stages(b.JobName, b.MultiBranchJobName, b.ID)
 	if err != nil {
-		logger.Printf("retrieving stage information for FolderName: %q, JobName: %q, BranchName: %q, buildID: %d, failed: %s", b.FolderName, b.JobName, b.BranchName, b.ID, err)
+		logger.Printf("retrieving stage information for job: %q, multibranchJob: %q, buildID: %d, failed: %s", b.JobName, b.MultiBranchJobName, b.ID, err)
 		metrics.Errors.WithLabelValues("jenkins_wfapi").Inc()
 		return
 	}
@@ -285,23 +296,24 @@ func stageIsInAllowList(jobName, stageName string) bool {
 }
 
 func isRecordingBranchLabelEnabled(b *jenkins.Build) bool {
-	if b.JobName == "" {
+	if b.MultiBranchJobName == "" {
 		return false
 	}
 
-	branches := branchLabelAllowList[b.JobName]
-	_, found := branches[b.FolderName]
+	branches := branchLabelAllowList[b.MultiBranchJobName]
+	_, found := branches[b.JobName]
 	return found
 }
 
 func recordStagesMetric(metrics *jenkinsexporter.Metrics, b *jenkins.Build, stages []*jenkins.Stage) {
 	var branchLabel string
 	if isRecordingBranchLabelEnabled(b) {
-		branchLabel = b.FolderName
+		branchLabel = b.JobName
 	}
 
+	metricJobName := metricJobName(b)
 	for _, stage := range stages {
-		if !stageIsInAllowList(b.JobName, stage.Name) {
+		if !stageIsInAllowList(metricJobName, stage.Name) {
 			continue
 		}
 
@@ -311,7 +323,7 @@ func recordStagesMetric(metrics *jenkinsexporter.Metrics, b *jenkins.Build, stag
 
 		labels := map[string]string{
 			"branch":      branchLabel,
-			"jenkins_job": filepath.Join(b.FolderName, b.JobName, b.BranchName),
+			"jenkins_job": filepath.Join(b.JobName, b.MultiBranchJobName),
 			"result":      strings.ToLower(stage.Status),
 			"stage":       stage.Name,
 			"type":        "duration",
